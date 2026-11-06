@@ -1,4 +1,32 @@
-# Equipment recognition fix — 1.0.1-snazz.1+26.3
+# Gathering and equipment fixes — 1.0.2-snazz.1+26.3
+
+## Gathering fixes in 1.0.2
+
+The Baritone pickup branch returned before the existing inventory, progress and
+unreachable-target checks. A stalled pickup could therefore run indefinitely,
+and its follow process continued even after the parent switched to crafting.
+
+- Apply the existing 25-second no-progress and 40-second pursuit budgets to
+  Baritone pickups. Track actual closing distance per entity across task rebuilds
+  and target changes; path-search restarts do not count as progress.
+- Bind the pickup filter to the selected live entity, cancel it on task exit,
+  handle full inventories, and use the existing tracker cool-off when a target
+  exhausts its budget. This applies to every dropped resource, not only hay.
+- Return control to the gatherer when no reachable drops remain, rather than
+  keeping an empty pickup task active forever. Ignore removed item entities.
+- Food collection makes bread from partial available ingredients before going
+  back for the remainder of its requested target. Wheat and hay are counted once,
+  whole-recipe quantities are used, and existing wheat/bread are included in the
+  absolute crafting targets.
+- A food pickup requests additional items instead of a target already satisfied
+  by ingredients in the inventory. Respect the source search radius for drops,
+  and let unavailable pickups yield to harvestable blocks.
+
+These changes do not reduce the requested amount of food, alter navigation
+distances, speed up vanilla crafting/smelting, or change server settings.
+Regression tests cover both the pickup progress model and bread conversion
+planning, alongside the earlier equipment tests. Live unattended survival
+performance remains unverified.
 
 Based on smallduuude/unionclef-26.3-native at
 `41d7c01f74dda8440b4129f3d737a3f70eea6103` (UnionClef 1.0.0 for Minecraft 26.3).

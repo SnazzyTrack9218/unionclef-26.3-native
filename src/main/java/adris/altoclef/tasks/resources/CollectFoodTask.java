@@ -15,6 +15,7 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.CraftingRecipe;
+import adris.altoclef.util.FoodConversionPlan;
 import adris.altoclef.util.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
@@ -153,9 +154,12 @@ public class CollectFoodTask extends Task {
     public static double calculateFoodPotential(AltoClef mod) {
         double potentialFood = 0;
         for (ItemStack food : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-            potentialFood += getFoodPotential(food);
+            // Count wheat/hay together below, once, using whole craftable bread.
+            if (food.getItem() != Items.WHEAT && food.getItem() != Items.HAY_BLOCK) {
+                potentialFood += getFoodPotential(food);
+            }
         }
-        int potentialBread = (int) (mod.getItemStorage().getItemCount(Items.WHEAT) / 3) + mod.getItemStorage().getItemCount(Items.HAY_BLOCK) * 3;
+        int potentialBread = FoodConversionPlan.potentialBread(mod.getItemStorage().getItemCount(Items.WHEAT), mod.getItemStorage().getItemCount(Items.HAY_BLOCK));
         potentialFood += Objects.requireNonNull(ItemVer.getFoodComponent( Items.BREAD)).getHunger() * potentialBread;
         // Check smelting
         AbstractContainerMenu screen = mod.getPlayer().containerMenu;
@@ -202,13 +206,42 @@ public class CollectFoodTask extends Task {
             smeltTask = null;
         }
 
-        if (checkNewOptionsTimer.elapsed()) {
+        int wheatCount = mod.getItemStorage().getItemCount(Items.WHEAT);
+        int hayCount = mod.getItemStorage().getItemCount(Items.HAY_BLOCK);
+        int breadCount = mod.getItemStorage().getItemCount(Items.BREAD);
+        FoodConversionPlan breadPlan = FoodConversionPlan.create(wheatCount, hayCount, breadCount,
+                StorageHelper.calculateInventoryFoodScore(), unitsNeeded,
+                Objects.requireNonNull(ItemVer.getFoodComponent(Items.BREAD)).getHunger());
+        boolean canConvertBread = breadPlan.breadTarget() > breadCount || breadPlan.wheatTarget() > wheatCount;
+        boolean craftingBread = currentResourceTask instanceof CraftInTableTask
+                || currentResourceTask instanceof CraftInInventoryTask;
+
+        if (checkNewOptionsTimer.elapsed() && !craftingBread) {
             // Try a new resource task
             checkNewOptionsTimer.reset();
             currentResourceTask = null;
         }
 
-        if (currentResourceTask != null && currentResourceTask.isActive() && !currentResourceTask.isFinished() && !currentResourceTask.thisOrChildAreTimedOut()) {
+        if (currentResourceTask != null && currentResourceTask.isActive() && !currentResourceTask.isFinished()
+                && !currentResourceTask.thisOrChildAreTimedOut() && (craftingBread || !canConvertBread)) {
+            return currentResourceTask;
+        }
+
+        // Convert what we already have before another pickup/harvest excursion.
+        // A 220-unit gathering goal must not postpone making usable food from a partial batch.
+        if (breadPlan.breadTarget() > breadCount) {
+            setDebugState("Crafting Bread");
+            Item[] w = new Item[]{Items.WHEAT};
+            Item[] o = null;
+            currentResourceTask = new CraftInTableTask(new RecipeTarget(Items.BREAD, breadPlan.breadTarget(),
+                    CraftingRecipe.newShapedRecipe("bread", new Item[][]{w, w, w, o, o, o, o, o, o}, 1)), false, false);
+            return currentResourceTask;
+        }
+        if (breadPlan.wheatTarget() > wheatCount) {
+            setDebugState("Crafting Wheat");
+            Item[] o = null;
+            currentResourceTask = new CraftInInventoryTask(new RecipeTarget(Items.WHEAT, breadPlan.wheatTarget(),
+                    CraftingRecipe.newShapedRecipe("wheat", new Item[][]{new Item[]{Items.HAY_BLOCK}, o, o, o}, 9)), false, false);
             return currentResourceTask;
         }
 
@@ -220,41 +253,6 @@ public class CollectFoodTask extends Task {
             // - If we have hay/wheat, make it into bread
             // - If we have raw foods, smelt all of them
 
-            // Convert Hay+Wheat -> Bread.
-            // ⛔ A CRAFT TARGET OF 99999999 NEVER COMPLETES. ResourceTask.isFinished() compares the
-            // inventory count against the target, so an unreachable target means the craft task is
-            // never finished -- CollectFoodTask keeps returning it for ever, and once the wheat runs
-            // out the bot just sits at the table, times out, wanders and comes back, over and over
-            // ("it almost crafts the bread, then wanders off and keeps cycling that"). Target the
-            // amount we can actually make from the wheat we hold (and no more than we need), so the
-            // craft can end.
-            int wheatCount = mod.getItemStorage().getItemCount(Items.WHEAT);
-            if (wheatCount >= 3) {
-                setDebugState("Crafting Bread");
-                Item[] w = new Item[]{Items.WHEAT};
-                Item[] o = null;
-                int breadFromWheat = wheatCount / 3;
-                int breadHunger = Objects.requireNonNull(ItemVer.getFoodComponent(Items.BREAD)).getHunger();
-                int foodShortfall = Math.max(0, (int) Math.ceil(unitsNeeded) - StorageHelper.calculateInventoryFoodScore());
-                int breadNeeded = Math.max(1, (foodShortfall + breadHunger - 1) / breadHunger);
-                // ⛔ CraftInTableTask's count is an ABSOLUTE inventory target, not "how many to
-                // make". Passing just the number we are short made the task satisfied before it began
-                // (the bread already in the pack counted toward it), so it neither crafted nor
-                // completed. Add what is already held — the operator hit exactly this with 20 bread
-                // in the pack and a "craft 12" request.
-                int breadTarget = Math.min(breadFromWheat, breadNeeded)
-                        + mod.getItemStorage().getItemCount(Items.BREAD);
-                currentResourceTask = new CraftInTableTask(new RecipeTarget(Items.BREAD, breadTarget, CraftingRecipe.newShapedRecipe("bread", new Item[][]{w, w, w, o, o, o, o, o, o}, 1)), false, false);
-                return currentResourceTask;
-            }
-            int hayCount = mod.getItemStorage().getItemCount(Items.HAY_BLOCK);
-            if (hayCount >= 1) {
-                setDebugState("Crafting Wheat");
-                Item[] o = null;
-                // Each hay block yields 9 wheat; target that finite number, not "infinity".
-                currentResourceTask = new CraftInInventoryTask(new RecipeTarget(Items.WHEAT, hayCount * 9, CraftingRecipe.newShapedRecipe("wheat", new Item[][]{new Item[]{Items.HAY_BLOCK}, o, o, o}, 9)), false, false);
-                return currentResourceTask;
-            }
             // Convert raw foods -> cooked foods
             // ⛔ RESTORED 2026-09-05: this loop was commented out, which combined with the
             // `smeltTask` field being `final = null` (also fixed) meant raw meat could never
@@ -543,14 +541,8 @@ public class CollectFoodTask extends Task {
             nearestBlock = Optional.empty();
         }
 
-        Optional<ItemEntity> nearestDrop = Optional.empty();
-        if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
-        }
-
-        if (nearestDrop.isPresent()) {
-            return pickupTaskOrNull(mod,itemToGrab);
-        }
+        Task pickup = pickupTaskOrNull(mod, itemToGrab, maxRange);
+        if (pickup != null) return pickup;
         if (nearestBlock.isPresent()) {
             return new DoToClosestBlockTask(DestroyBlockTask::new, acceptPlus, blockToCheck);
         }
@@ -580,7 +572,7 @@ public class CollectFoodTask extends Task {
                 if (mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(nearestDrop.get().getItem(), false).isEmpty()) {
                     Optional<Slot> slot = StorageHelper.getGarbageSlot(mod);
 
-                    // tf am I supposed to do if its empty
+                    if (slot.isEmpty()) return null;
                     if (slot.isPresent()) {
                         ItemStack stack = StorageHelper.getItemStackInSlot(slot.get());
                         if (ItemVer.isFood(stack.getItem())) {
@@ -602,7 +594,10 @@ public class CollectFoodTask extends Task {
                         }
                     }
                 }
-                return new PickupDroppedItemTask(new ItemTarget(itemToGrab), true);
+                // Pickup targets are absolute inventory counts. Existing wheat/hay must
+                // not make a request for another stack look completed before it starts.
+                int target = mod.getItemStorage().getItemCount(itemToGrab) + nearestDrop.get().getItem().getCount();
+                return new PickupDroppedItemTask(new ItemTarget(itemToGrab, target), true);
             }
         }
         return null;

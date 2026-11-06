@@ -15,6 +15,7 @@ import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.util.progresscheck.PickupProgressMonitor;
 import net.minecraft.world.level.block.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -132,6 +133,10 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
      *  caps the worst-case wander at a third of what it was. Works with dropAbandonWhenNotClosing,
      *  which cuts a NON-closing pursuit even sooner (25s). */
     private static final long PURSUIT_BUDGET_MS = 40_000L;
+    private static final PickupProgressMonitor BARITONE_PROGRESS =
+            new PickupProgressMonitor(NOT_CLOSING_MS, PURSUIT_BUDGET_MS, 0.25);
+    private static Object pickupWorld;
+    private boolean ownsBaritonePickup;
     /** Drops abandoned because the pursuit ran past its budget. */
     public static volatile int dropBudgetSpent;
     /** G39: settled drops approached as a BLOCK goal (the build engine's road), ticks the
@@ -230,7 +235,10 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     @Override
     protected void onStop(Task interruptTask) {
-
+        if (ownsBaritonePickup) {
+            BaritoneBridge.cancelFollow();
+            ownsBaritonePickup = false;
+        }
     }
 
     /** Traced pickup decisions; see the note at the branch. */
@@ -272,17 +280,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             // pack the job is done; letting Baritone run its follow process out is the pause the
             // operator sees between "picked it up" and the next task. Stop it here and say so.
             if (StorageHelper.itemTargetsMetInventoryNoCursor(itemTargets)) {
-                if (BaritoneBridge.isPickingUp()) {
-                    BaritoneBridge.cancelFollow();
-                }
+                stopBaritonePickup();
+                if (_currentDrop != null) BARITONE_PROGRESS.forget(_currentDrop.getUUID());
                 setDebugState("Collected.");
                 return null;
             }
-            if (!BaritoneBridge.isPickingUp() && BaritoneBridge.pickupItems(this::isWantedDrop)) {
-                baritonePickups++;
-            }
-            setDebugState("Baritone collecting " + itemTargets.length + " drop kind(s)");
-            return null;
+            return tickBaritonePickup(mod);
         }
 
         // A SEARCH IS NOT PROGRESS. isPathing() is true while the pathfinder is merely LOOKING, and
@@ -519,6 +522,68 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
 
+    private void stopBaritonePickup() {
+        if (ownsBaritonePickup) BaritoneBridge.cancelFollow();
+        ownsBaritonePickup = false;
+    }
+
+    private Task tickBaritonePickup(AltoClef mod) {
+        if (pickupWorld != mod.getWorld()) {
+            BARITONE_PROGRESS.clear();
+            pickupWorld = mod.getWorld();
+        }
+        if (_currentDrop == null || !isValid(mod, _currentDrop)
+                || !mod.getEntityTracker().isEntityReachable(_currentDrop)
+                || !isWantedDrop(_currentDrop.getItem())) {
+            stopBaritonePickup();
+            _currentDrop = getClosestTo(mod, mod.getPlayer().position()).orElse(null);
+        }
+        if (_currentDrop == null) {
+            stopBaritonePickup();
+            setDebugState("No reachable drops; returning to gathering");
+            return null;
+        }
+        if (_freeInventoryIfFull && mod.getItemStorage()
+                .getSlotsThatCanFitInPlayerInventory(_currentDrop.getItem(), false).isEmpty()) {
+            stopBaritonePickup();
+            if (StorageHelper.getGarbageSlot(mod).isEmpty() && StorageHelper.getItemStackInCursorSlot().isEmpty()) {
+                setDebugState("Inventory full; no discardable items");
+                return null;
+            }
+            setDebugState("Making inventory space for the drop");
+            return new EnsureFreeInventorySlotTask();
+        }
+        long now = System.nanoTime() / 1_000_000L;
+        if (BARITONE_PROGRESS.stalled(_currentDrop.getUUID(), now, _currentDrop.distanceToSqr(mod.getPlayer()))) {
+            stopBaritonePickup();
+            Debug.logMessage("Pickup made no progress or exhausted its budget; trying another source.");
+            mod.getEntityTracker().requestEntityUnreachableNow(_currentDrop);
+            BARITONE_PROGRESS.forget(_currentDrop.getUUID());
+            _currentDrop = null;
+            dropNotClosingAbandoned++;
+            return null;
+        }
+        ItemEntity target = _currentDrop;
+        if (!ownsBaritonePickup || !BaritoneBridge.isPickingUp()) {
+            // Baritone tests each entity's actual stack. Bind it to the selected entity,
+            // rather than silently letting the engine pursue a different matching drop.
+            ownsBaritonePickup = BaritoneBridge.pickupItems(stack -> target.isAlive()
+                    && !target.isRemoved() && stack == target.getItem() && isWantedDrop(stack));
+            if (ownsBaritonePickup) baritonePickups++;
+        }
+        setDebugState("Baritone collecting " + target.getItem().getHoverName().getString());
+        return null;
+    }
+
+    @Override
+    public boolean isFinished() {
+        AltoClef mod = AltoClef.getInstance();
+        if (mod.getPlayer() == null || mod.getWorld() == null) return true;
+        if (StorageHelper.itemTargetsMetInventoryNoCursor(itemTargets)) return true;
+        return BaritoneBridge.selected()
+                && getClosestTo(mod, mod.getPlayer().position()).isEmpty();
+    }
+
     @Override
     protected boolean isEqual(Task other) {
         // Same target items
@@ -560,6 +625,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     protected Optional<ItemEntity> getClosestTo(AltoClef mod, Vec3 pos) {
         return mod.getEntityTracker().getClosestItemDrop(
                 pos,
+                entity -> isValid(mod, entity) && mod.getEntityTracker().isEntityReachable(entity),
                 itemTargets);
     }
 

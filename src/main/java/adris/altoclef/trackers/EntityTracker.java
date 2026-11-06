@@ -303,7 +303,8 @@ public class EntityTracker extends Tracker {
                 // through to the block it could simply dig. Resting here means "the pickaxe is
                 // the job for now", which is the behaviour that branch was written for.
                 for (ItemEntity entity : itemDropLocations.get(item)) {
-                    if (!entityBlacklist.unreachable(entity)) return true;
+                    if (entity.isAlive() && !entity.isRemoved() && !entity.getItem().isEmpty()
+                            && !entityBlacklist.unreachable(entity)) return true;
                 }
             }
         }
@@ -449,6 +450,11 @@ public class EntityTracker extends Tracker {
      */
     public void requestEntityUnreachable(Entity entity) {
         entityBlacklist.blackListItem(mod, entity, 3);
+    }
+
+    /** A pickup has already spent its entire progress budget; start the existing cool-off now. */
+    public void requestEntityUnreachableNow(Entity entity) {
+        entityBlacklist.blackListNow(mod, entity);
     }
 
     /**

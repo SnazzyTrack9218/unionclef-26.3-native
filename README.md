@@ -7,7 +7,10 @@ Beat the Game. Netherite and mixed-tier equipment satisfy the matching weaker
 requirements. Missing tool types still get collected, and the gold helmet
 requirement for piglins stays an exact gold requirement.
 
-Download **1.0.1-snazz.1+26.3** from this fork's Releases. Replace the previous
+The latest build also fixes the shared Baritone pickup path bypassing progress
+budgets and inventory handling, and processes partial bread ingredients promptly.
+
+Download **1.0.2-snazz.1+26.3** from this fork's Releases. Replace the previous
 UnionClef jar; do not enable both versions at once. Minecraft 26.3, Java 25 and
 Fabric are required. See [FORK_NOTES.md](FORK_NOTES.md) for changes, validation,
 limitations, and build instructions. The upstream mod remains experimental.
