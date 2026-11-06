@@ -58,6 +58,10 @@ dependencies {
     // Voice chat API (compile-time only)
     compileOnly 'de.maxhenkel.voicechat:voicechat-api:2.6.0'
 
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     // Py4j (Python bridge) — must be bundled; the AltoClef entrypoint references it directly.
     implementation 'net.sf.py4j:py4j:0.10.9.7'
     include 'net.sf.py4j:py4j:0.10.9.7'
@@ -86,6 +90,10 @@ dependencies {
     // REMAP, which is unnecessary: this is Baritone's RELEASED jar, already built for production
     // Fabric (intermediary). It is also not on the compile classpath - altoclef reaches Baritone
     // through reflection on its public API (see adris.altoclef.control.BaritoneBridge).
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 processResources {

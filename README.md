@@ -1,5 +1,18 @@
 # UnionClef
 
+## SnazzyTrack9218's equipment fix
+
+This fork fixes unnecessary lower-tier tool and armor collection in Self-Care and
+Beat the Game. Netherite and mixed-tier equipment satisfy the matching weaker
+requirements. Missing tool types still get collected, and the gold helmet
+requirement for piglins stays an exact gold requirement.
+
+Download **1.0.1-snazz.1+26.3** from this fork's Releases. Replace the previous
+UnionClef jar; do not enable both versions at once. Minecraft 26.3, Java 25 and
+Fabric are required. See [FORK_NOTES.md](FORK_NOTES.md) for changes, validation,
+limitations, and build instructions. The upstream mod remains experimental.
+
+
 ## ⚠️ ALPHA BUILD — expect rough edges
 
 > **UnionClef is in alpha.** Things will break, behaviour will change between versions, and some

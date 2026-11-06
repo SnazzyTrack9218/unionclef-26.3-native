@@ -9,10 +9,12 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.EquipmentHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
+import java.util.Arrays;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -63,8 +65,6 @@ public class SelfCareTask extends Task {
     private static final Task getFood = new CollectFoodTask(100);
     private static final Task sleepThroughNight = new SleepThroughNightTask();
     private static final Task equipShield = new EquipArmorTask(Items.SHIELD);
-    private static Task getToolSet;
-    private static Task equipArmorSet;
     private static String debugStateName;
 
     private static boolean isTaskNotFinished(Task task) {
@@ -79,32 +79,24 @@ public class SelfCareTask extends Task {
     @Override
     protected Task onTick() {
         AltoClef mod = AltoClef.getInstance();
-        boolean hasWoodToolSet = mod.getItemStorage().hasItem(woodToolSet);
-        boolean hasStoneToolSet = mod.getItemStorage().hasItem(stoneToolSet);
-        boolean hasIronToolSet = mod.getItemStorage().hasItem(ironToolSet);
+        ItemTarget[] missingWoodTools = missingTools(mod, woodToolSet);
+        ItemTarget[] missingStoneTools = missingTools(mod, stoneToolSet);
+        ItemTarget[] missingIronTools = missingTools(mod, ironToolSet);
         boolean hasBed = mod.getItemStorage().hasItem(beds);
         boolean hasShield = StorageHelper.isArmorEquipped(Items.SHIELD);
-        boolean hasIronArmorSet = StorageHelper.isArmorEquippedAll(ironArmorSet);
-        boolean hasDiamondToolSet = mod.getItemStorage().hasItem(diamondToolSet);
-        boolean hasDiamondArmorSet = StorageHelper.isArmorEquippedAll(diamondArmorSet);
-        boolean hasNetheriteToolSet = mod.getItemStorage().hasItem(netheriteToolSet);
-        boolean hasNetheriteArmorSet = StorageHelper.isArmorEquippedAll(netheriteArmorSet);
+        Item[] missingIronArmor = missingArmor(mod, ironArmorSet);
+        ItemTarget[] missingDiamondTools = missingTools(mod, diamondToolSet);
+        Item[] missingDiamondArmor = missingArmor(mod, diamondArmorSet);
+        ItemTarget[] missingNetheriteTools = missingTools(mod, netheriteToolSet);
+        Item[] missingNetheriteArmor = missingArmor(mod, netheriteArmorSet);
         Optional<Entity> player = mod.getEntityTracker().getClosestEntity(Player.class);
         if (hasBed && WorldHelper.canSleep()) {
             setDebugState("Sleeping through night");
             return sleepThroughNight;
         }
-        if (isTaskNotFinished(getToolSet)) {
-            setDebugState(debugStateName);
-            return getToolSet;
-        }
         if (isTaskNotFinished(equipShield)) {
             setDebugState(debugStateName);
             return equipShield;
-        }
-        if (isTaskNotFinished(equipArmorSet)) {
-            setDebugState(debugStateName);
-            return equipArmorSet;
         }
         if (isTaskNotFinished(getBed)) {
             setDebugState(debugStateName);
@@ -114,15 +106,15 @@ public class SelfCareTask extends Task {
             setDebugState(debugStateName);
             return getFood;
         }
-        if (!hasWoodToolSet) {
+        // Re-evaluate gear each tick: a better item acquired during a task must cancel the
+        // obsolete lower-tier target instead of finishing an exact-item crafting checklist.
+        if (missingWoodTools.length > 0) {
             debugStateName = "Getting wood tool set";
-            getToolSet = TaskCatalogue.getSquashedItemTask(woodToolSet);
-            return getToolSet;
+            return TaskCatalogue.getSquashedItemTask(missingWoodTools);
         }
-        if (!hasStoneToolSet) {
+        if (missingStoneTools.length > 0) {
             debugStateName = "Getting stone tool set";
-            getToolSet = TaskCatalogue.getSquashedItemTask(stoneToolSet);
-            return getToolSet;
+            return TaskCatalogue.getSquashedItemTask(missingStoneTools);
         }
         if (!hasBed) {
             debugStateName = "Getting bed";
@@ -132,39 +124,33 @@ public class SelfCareTask extends Task {
             debugStateName = "Getting food";
             return getFood;
         }
-        if (!hasIronToolSet) {
+        if (missingIronTools.length > 0) {
             debugStateName = "Getting iron tool set";
-            getToolSet = TaskCatalogue.getSquashedItemTask(ironToolSet);
-            return getToolSet;
+            return TaskCatalogue.getSquashedItemTask(missingIronTools);
         }
         if (!hasShield) {
             debugStateName = "Getting shield";
             return equipShield;
         }
-        if (!hasIronArmorSet) {
+        if (missingIronArmor.length > 0) {
             debugStateName = "Getting and equipping iron armor set";
-            equipArmorSet = new EquipArmorTask(ironArmorSet);
-            return equipArmorSet;
+            return new EquipArmorTask(missingIronArmor);
         }
-        if (!hasDiamondToolSet) {
+        if (missingDiamondTools.length > 0) {
             debugStateName = "Getting diamond tool set";
-            getToolSet = TaskCatalogue.getSquashedItemTask(diamondToolSet);
-            return getToolSet;
+            return TaskCatalogue.getSquashedItemTask(missingDiamondTools);
         }
-        if (!hasDiamondArmorSet) {
+        if (missingDiamondArmor.length > 0) {
             debugStateName = "Getting and equipping diamond armor set";
-            equipArmorSet = new EquipArmorTask(diamondArmorSet);
-            return equipArmorSet;
+            return new EquipArmorTask(missingDiamondArmor);
         }
-        if (!hasNetheriteToolSet) {
+        if (missingNetheriteTools.length > 0) {
             debugStateName = "Getting netherite tool set";
-            getToolSet = TaskCatalogue.getSquashedItemTask(netheriteToolSet);
-            return getToolSet;
+            return TaskCatalogue.getSquashedItemTask(missingNetheriteTools);
         }
-        if (!hasNetheriteArmorSet) {
+        if (missingNetheriteArmor.length > 0) {
             debugStateName = "Getting and equipping netherite armor set";
-            equipArmorSet = new EquipArmorTask(netheriteArmorSet);
-            return equipArmorSet;
+            return new EquipArmorTask(missingNetheriteArmor);
         }
         if (player.isPresent()) {
             setDebugState("Following player");
@@ -172,6 +158,18 @@ public class SelfCareTask extends Task {
         }
         setDebugState("Wandering until a player is found");
         return new TimeoutWanderTask();
+    }
+
+    private static ItemTarget[] missingTools(AltoClef mod, ItemTarget[] required) {
+        Item[] minimums = Arrays.stream(required).map(target -> target.getMatches()[0]).toArray(Item[]::new);
+        return EquipmentHelper.missingEquipment(item -> mod.getItemStorage().hasItem(item), minimums);
+    }
+
+    private static Item[] missingArmor(AltoClef mod, Item[] required) {
+        return Arrays.stream(EquipmentHelper.missingEquipment(StorageHelper::isArmorEquipped, required))
+                .map(target -> EquipmentHelper.bestAvailable(item -> mod.getItemStorage().hasItem(item),
+                        target.getMatches()[0]))
+                .toArray(Item[]::new);
     }
 
     @Override

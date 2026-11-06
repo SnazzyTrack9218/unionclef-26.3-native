@@ -1,0 +1,53 @@
+# Equipment recognition fix — 1.0.1-snazz.1+26.3
+
+Based on smallduuude/unionclef-26.3-native at
+`41d7c01f74dda8440b4129f3d737a3f70eea6103` (UnionClef 1.0.0 for Minecraft 26.3).
+Original authorship, GPL-3.0 license, bundled components and their notices are retained.
+
+## Behavior
+
+- Self-Care accepts the same tool type at an equal or higher tier instead of
+  requiring a wooden, stone, iron, diamond and netherite copy of every tool.
+- Each role is checked independently. A netherite pickaxe does not stand in for
+  a missing sword, axe or shovel; mixed-tier sets are supported.
+- Only missing tools and armor slots are requested. Equipped better armor is
+  preserved, and better armor already in the inventory is preferred over
+  crafting weaker armor.
+- Equipment targets are re-evaluated while working so newly acquired upgrades
+  cancel obsolete lower-tier crafting targets.
+- Beat the Game recognizes netherite throughout gear preparation, crafting,
+  loot recovery and its repeated replacement-pickaxe checks. It no longer
+  crafts or recovers weaker tools when a suitable upgrade is already owned.
+- Exact resource and crafting requests remain exact. Gold helmets still satisfy
+  the piglin protection requirement only when they are actually gold.
+
+The fix covers vanilla wood, stone, iron, diamond and netherite tool progression
+and iron, diamond and netherite armor. It does not infer tiers for arbitrary
+modded equipment. Existing survival planning, food, combat and recipe issues
+outside equipment recognition are unchanged.
+
+## Build and checks
+
+Use JDK 25:
+
+```powershell
+.\gradlew.bat build
+```
+
+The upstream checkout omitted `gradle-wrapper.jar`. This fork includes the
+official Gradle 9.7.1 wrapper and pins its distribution checksum, allowing a
+fresh checkout to build without a separately installed Gradle.
+
+JUnit tests bootstrap Minecraft's real item registry and cover full netherite
+sets, mixed tiers, missing roles, lower-tier rejection, mixed armor, choosing
+the best owned armor, upgrades arriving during a task, and exact gold/resource
+requirements. These tests do not claim an unattended survival playthrough.
+
+## Install or roll back
+
+Keep one enabled UnionClef jar in the instance's `mods` folder. This fork retains
+the `altoclef` mod ID and the bundled Baritone dependency, and uses the existing
+configuration. Quit and relaunch Minecraft after replacing the jar.
+
+To roll back, disable this fork's jar and re-enable the saved 1.0.0 jar. No world,
+player inventory or server data needs to be modified.

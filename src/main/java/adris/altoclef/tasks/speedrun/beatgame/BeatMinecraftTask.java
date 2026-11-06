@@ -224,7 +224,7 @@ public class BeatMinecraftTask extends Task {
                 ItemHelper.itemsToBlocks(ItemHelper.LOG), ItemHelper.LOG, MiningRequirement.STONE,
                 new DistanceItemPriorityCalculator(1050, 450, 5, 4, 10),
 
-                a -> itemStorage.hasItem(Items.STONE_AXE, Items.IRON_AXE, Items.GOLDEN_AXE, Items.DIAMOND_AXE)
+                a -> (hasEquipment(mod, Items.STONE_AXE) || itemStorage.hasItem(Items.GOLDEN_AXE))
                         && itemStorage.getItemCount(ItemHelper.LOG) < 5
         ));
 
@@ -240,7 +240,7 @@ public class BeatMinecraftTask extends Task {
 
         gatherResources.add(new MineBlockPriorityTask(new Block[]{Blocks.GRAVEL}, new Item[]{Items.FLINT}, MiningRequirement.STONE,
                 new DistanceItemPriorityCalculator(17500, 7500, 5, 1, 1),
-                a -> itemStorage.hasItem(Items.STONE_SHOVEL) && !itemStorage.hasItem(Items.FLINT_AND_STEEL)
+                a -> hasEquipment(mod, Items.STONE_SHOVEL) && !itemStorage.hasItem(Items.FLINT_AND_STEEL)
         ));
 
         gatherResources.add(new MineBlockPriorityTask(ItemHelper.itemsToBlocks(ItemHelper.BED), ItemHelper.BED, MiningRequirement.HAND,
@@ -260,7 +260,7 @@ public class BeatMinecraftTask extends Task {
             // Not before iron tools, and not more than a few minutes a day. full50: the bed task
             // took 4.5 minutes of the first day, before any iron, and brought no bed; the night
             // then came with stone tools. A bed is worth a short detour, not the day.
-            if (!a.getItemStorage().hasItem(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE)) return pair;
+            if (!hasEquipment(a, Items.IRON_PICKAXE)) return pair;
             long day = a.getWorld().getOverworldClockTime() / 24000L;
             if (day != bedHuntDay) {
                 bedHuntDay = day;
@@ -296,7 +296,7 @@ public class BeatMinecraftTask extends Task {
                 a -> itemStorage.hasItem(Items.IRON_INGOT) && itemStorage.hasItem(Items.FLINT)
         ));
 
-        gatherResources.add(new CraftItemPriorityTask(330, getRecipeTarget(Items.DIAMOND_SWORD), a -> itemStorage.getItemCount(Items.DIAMOND) >= 2 && StorageHelper.miningRequirementMet(MiningRequirement.DIAMOND)));
+        gatherResources.add(new CraftItemPriorityTask(330, getRecipeTarget(Items.DIAMOND_SWORD), a -> itemStorage.getItemCount(Items.DIAMOND) >= 2 && StorageHelper.miningRequirementMet(MiningRequirement.DIAMOND) && !hasEquipment(mod, Items.DIAMOND_SWORD)));
         gatherResources.add(new CraftItemPriorityTask(400, getRecipeTarget(Items.GOLDEN_HELMET), a -> itemStorage.getItemCount(Items.GOLD_INGOT) >= 5));
 
         addSleepTask(mod);
@@ -471,6 +471,11 @@ public class BeatMinecraftTask extends Task {
         }
     }
 
+    private static boolean hasEquipment(AltoClef mod, Item minimum) {
+        return EquipmentHelper.hasAtLeast(item -> mod.getItemStorage().hasItem(item)
+                || StorageHelper.isArmorEquipped(item), minimum);
+    }
+
     public static boolean hasItem(AltoClef mod, Item item) {
         LocalPlayer player = mod.getPlayer();
         Inventory inv = player.getInventory();
@@ -493,13 +498,13 @@ public class BeatMinecraftTask extends Task {
             count += hasItem(mod, Items.SHIELD) ? 1 : 0;
             count += hasItem(mod, Items.FLINT_AND_STEEL) ? 1 : 0;
 
-            count += hasItem(mod, Items.IRON_SWORD) ? 2 : 0;
-            count += hasItem(mod, Items.IRON_PICKAXE) ? 3 : 0;
+            count += hasEquipment(mod, Items.IRON_SWORD) ? 2 : 0;
+            count += hasEquipment(mod, Items.IRON_PICKAXE) ? 3 : 0;
 
-            count += hasItem(mod, Items.IRON_HELMET) ? 5 : 0;
-            count += hasItem(mod, Items.IRON_CHESTPLATE) ? 8 : 0;
-            count += hasItem(mod, Items.IRON_LEGGINGS) ? 7 : 0;
-            count += hasItem(mod, Items.IRON_BOOTS) ? 4 : 0;
+            count += hasEquipment(mod, Items.IRON_HELMET) ? 5 : 0;
+            count += hasEquipment(mod, Items.IRON_CHESTPLATE) ? 8 : 0;
+            count += hasEquipment(mod, Items.IRON_LEGGINGS) ? 7 : 0;
+            count += hasEquipment(mod, Items.IRON_BOOTS) ? 4 : 0;
 
             return count;
         } else if (item == Items.RAW_GOLD) {
@@ -514,13 +519,13 @@ public class BeatMinecraftTask extends Task {
             return count;
         } else if (item == Items.DIAMOND) {
             int count = itemStorage.getItemCount(Items.DIAMOND);
-            count += hasItem(mod, Items.DIAMOND_SWORD) ? 2 : 0;
-            count += hasItem(mod, Items.DIAMOND_PICKAXE) ? 3 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_SWORD) ? 2 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_PICKAXE) ? 3 : 0;
 
-            count += hasItem(mod, Items.DIAMOND_HELMET) ? 5 : 0;
-            count += hasItem(mod, Items.DIAMOND_CHESTPLATE) ? 8 : 0;
-            count += hasItem(mod, Items.DIAMOND_LEGGINGS) ? 7 : 0;
-            count += hasItem(mod, Items.DIAMOND_BOOTS) ? 4 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_HELMET) ? 5 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_CHESTPLATE) ? 8 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_LEGGINGS) ? 7 : 0;
+            count += hasEquipment(mod, Items.DIAMOND_BOOTS) ? 4 : 0;
 
             return count;
         }
@@ -597,9 +602,7 @@ public class BeatMinecraftTask extends Task {
             Pair<Task, Double> pair = new Pair<>(null, 0d);
 
             for (Item item : importantItems) {
-                if (item == Items.IRON_PICKAXE && mod1.getItemStorage().hasItem(Items.DIAMOND_PICKAXE)) continue;
-
-                if (!mod1.getItemStorage().hasItem(item) && mod1.getEntityTracker().itemDropped(item)) {
+                if (!hasEquipment(mod1, item) && mod1.getEntityTracker().itemDropped(item)) {
                     pair.setLeft(new PickupDroppedItemTask(item, 1));
                     // ⛔ NOT UNARMED INTO THE DARK WHERE IT JUST DIED (2026-09-24, full playthrough).
                     // The dropped gear lies where the body died, and that is where whatever killed it
@@ -669,7 +672,7 @@ public class BeatMinecraftTask extends Task {
         gatherResources.add(new ActionPriorityTask(a -> {
             Pair<Task, Double> pair = new Pair<>(null, Double.NEGATIVE_INFINITY);
 
-            boolean hasSufficientPickaxe = itemStorage.hasItem(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE);
+            boolean hasSufficientPickaxe = hasEquipment(mod, Items.IRON_PICKAXE);
 
             int neededIron = 11;
             if (itemStorage.hasItem(Items.FLINT_AND_STEEL)) {
@@ -777,7 +780,7 @@ public class BeatMinecraftTask extends Task {
                 a -> (CollectFoodPriorityCalculator.needsEmergencyFood(a)
                         || a.getPlayer() != null && a.getPlayer().getHealth() <= LOW_HEALTH_FOOD_OVERRIDE
                         || StorageHelper.miningRequirementMet(MiningRequirement.STONE)
-                        && mod.getItemStorage().hasItem(Items.STONE_SWORD, Items.IRON_SWORD, Items.DIAMOND_SWORD))
+                        && hasEquipment(mod, Items.STONE_SWORD))
                         && CollectFoodTask.calculateFoodPotential(mod) < config.foodUnits,
 
                 new CollectFoodTask(config.foodUnits), ItemTarget.of(food.toArray(new Item[]{}))
@@ -843,23 +846,24 @@ public class BeatMinecraftTask extends Task {
         // run goes to this task instead, collecting a shovel and a hoe the run never uses.
         //
         // A convenience must yield to progression. Lowered so ore wins at a working radius.
-        gatherResources.add(new ResourcePriorityTask(StaticItemPriorityCalculator.of(
-                kaptainwutax.tungsten.TungstenConfig.get().toolsetYieldsToOre
-                        ? kaptainwutax.tungsten.TungstenConfig.get().toolsetPriorityWhenOreMatters
-                        : 520),
-                altoClef -> StorageHelper.miningRequirementMet(MiningRequirement.STONE),
-                true, true, false,
-                ItemTarget.of(Items.STONE_AXE, Items.STONE_SWORD, Items.STONE_SHOVEL, Items.STONE_HOE)
-        ));
+        for (Item tool : new Item[]{Items.STONE_AXE, Items.STONE_SWORD, Items.STONE_SHOVEL, Items.STONE_HOE}) {
+            gatherResources.add(new ResourcePriorityTask(StaticItemPriorityCalculator.of(
+                    kaptainwutax.tungsten.TungstenConfig.get().toolsetYieldsToOre
+                            ? kaptainwutax.tungsten.TungstenConfig.get().toolsetPriorityWhenOreMatters
+                            : 520),
+                    altoClef -> StorageHelper.miningRequirementMet(MiningRequirement.STONE)
+                            && !hasEquipment(altoClef, tool),
+                    true, true, false, ItemTarget.of(tool)));
+        }
 
         gatherResources.add(new CraftItemPriorityTask(300, getRecipeTarget(Items.STONE_SWORD),
                 a -> StorageHelper.miningRequirementMet(MiningRequirement.STONE)
-                        && !mod.getItemStorage().hasItem(Items.DIAMOND_SWORD, Items.IRON_SWORD)
+                        && !hasEquipment(mod, Items.IRON_SWORD)
         ));
 
         gatherResources.add(new CraftItemPriorityTask(300, getRecipeTarget(Items.STONE_AXE),
                 a -> StorageHelper.miningRequirementMet(MiningRequirement.STONE)
-                        && !mod.getItemStorage().hasItem(Items.DIAMOND_AXE, Items.IRON_AXE)
+                        && !hasEquipment(mod, Items.IRON_AXE)
         ));
     }
 
@@ -869,14 +873,14 @@ public class BeatMinecraftTask extends Task {
      */
 
     private void addDiamondArmorTasks(AltoClef mod) {
-        gatherResources.add(new CraftItemPriorityTask(350, getRecipeTarget(Items.DIAMOND_CHESTPLATE), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 8));
-        gatherResources.add(new CraftItemPriorityTask(300, getRecipeTarget(Items.DIAMOND_LEGGINGS), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 7));
-        gatherResources.add(new CraftItemPriorityTask(220, getRecipeTarget(Items.DIAMOND_BOOTS), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 5));
+        gatherResources.add(new CraftItemPriorityTask(350, getRecipeTarget(Items.DIAMOND_CHESTPLATE), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 8 && !hasEquipment(mod, Items.DIAMOND_CHESTPLATE)));
+        gatherResources.add(new CraftItemPriorityTask(300, getRecipeTarget(Items.DIAMOND_LEGGINGS), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 7 && !hasEquipment(mod, Items.DIAMOND_LEGGINGS)));
+        gatherResources.add(new CraftItemPriorityTask(220, getRecipeTarget(Items.DIAMOND_BOOTS), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 5 && !hasEquipment(mod, Items.DIAMOND_BOOTS)));
     }
 
     private void addPickaxeTasks(AltoClef mod) {
         gatherResources.add(new ResourcePriorityTask(StaticItemPriorityCalculator.of(400),
-                a -> !(mod.getItemStorage().hasItem(Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE)),
+                a -> !hasEquipment(mod, Items.WOODEN_PICKAXE),
                 ItemTarget.of(Items.WOODEN_PICKAXE)));
 
         gatherResources.add(new RecraftableItemPriorityTask(410, 10_000, getRecipeTarget(Items.STONE_PICKAXE),
@@ -892,14 +896,14 @@ public class BeatMinecraftTask extends Task {
                         }
                     }
 
-                    return StorageHelper.miningRequirementMet(MiningRequirement.WOOD) && !mod.getItemStorage().hasItem(Items.STONE_PICKAXE) && !hasSafeIronPick && !mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE);
+                    return StorageHelper.miningRequirementMet(MiningRequirement.WOOD) && !mod.getItemStorage().hasItem(Items.STONE_PICKAXE) && !hasSafeIronPick && !hasEquipment(mod, Items.DIAMOND_PICKAXE);
                 }));
 
         gatherResources.add(new CraftItemPriorityTask(420, getRecipeTarget(Items.IRON_PICKAXE),
-                a -> !mod.getItemStorage().hasItem(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE) && mod.getItemStorage().getItemCount(Items.IRON_INGOT) >= 3));
+                a -> !hasEquipment(mod, Items.IRON_PICKAXE) && mod.getItemStorage().getItemCount(Items.IRON_INGOT) >= 3));
 
 
-        gatherResources.add(new CraftItemPriorityTask(430, getRecipeTarget(Items.DIAMOND_PICKAXE), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 3));
+        gatherResources.add(new CraftItemPriorityTask(430, getRecipeTarget(Items.DIAMOND_PICKAXE), a -> mod.getItemStorage().getItemCount(Items.DIAMOND) >= 3 && !hasEquipment(mod, Items.DIAMOND_PICKAXE)));
     }
 
     /**
@@ -998,7 +1002,7 @@ public class BeatMinecraftTask extends Task {
         boolean isGoldenHelmetEquipped = StorageHelper.isArmorEquipped(Items.GOLDEN_HELMET);
         boolean hasGoldenHelmet = mod.getItemStorage().hasItemInventoryOnly(Items.GOLDEN_HELMET);
 
-        if (!mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+        if (!hasEquipment(mod, Items.IRON_PICKAXE)) {
             lootable.add(Items.IRON_PICKAXE);
         }
         if (mod.getItemStorage().getItemCount(Items.BUCKET, Items.WATER_BUCKET, Items.LAVA_BUCKET) < 2) {
@@ -1477,10 +1481,10 @@ public class BeatMinecraftTask extends Task {
         }
 
 
-        boolean eyeGearSatisfied = StorageHelper.isArmorEquippedAll(COLLECT_EYE_ARMOR);
-        boolean ironGearSatisfied = StorageHelper.isArmorEquippedAll(COLLECT_IRON_ARMOR);
+        boolean eyeGearSatisfied = EquipmentHelper.missingEquipment(StorageHelper::isArmorEquipped, COLLECT_EYE_ARMOR).length == 0;
+        boolean ironGearSatisfied = EquipmentHelper.missingEquipment(StorageHelper::isArmorEquipped, COLLECT_IRON_ARMOR).length == 0;
 
-        if (itemStorage.hasItem(Items.DIAMOND_PICKAXE)) {
+        if (hasEquipment(mod, Items.DIAMOND_PICKAXE)) {
             mod.getBehaviour().setBlockBreakAdditionalPenalty(1.2);
         } else {
             mod.getBehaviour().setBlockBreakAdditionalPenalty(0);   // G-0: legacy default was 0
@@ -1643,14 +1647,14 @@ public class BeatMinecraftTask extends Task {
             throwAwayItems(mod, uselessItems.uselessItems);
 
 
-            if (itemStorage.hasItem(Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE)) {
+            if (hasEquipment(mod, Items.STONE_PICKAXE)) {
                 throwAwayItems(mod, Items.WOODEN_PICKAXE);
             }
-            if (itemStorage.hasItem(Items.DIAMOND_PICKAXE)) {
+            if (hasEquipment(mod, Items.DIAMOND_PICKAXE)) {
                 throwAwayItems(mod, Items.IRON_PICKAXE, Items.STONE_PICKAXE);
             }
 
-            if (itemStorage.hasItem(Items.DIAMOND_SWORD)) {
+            if (hasEquipment(mod, Items.DIAMOND_SWORD)) {
                 throwAwayItems(mod, Items.STONE_SWORD, Items.IRON_SWORD);
             }
 
@@ -1726,7 +1730,7 @@ public class BeatMinecraftTask extends Task {
             if (mod.getEntityTracker().itemDropped(ItemHelper.BED) && (needsBeds(mod) || WorldHelper.getCurrentDimension() == Dimension.END))
                 return new PickupDroppedItemTask(new ItemTarget(ItemHelper.BED), true);
             // Grab tools
-            if (!itemStorage.hasItem(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE)) {
+            if (!hasEquipment(mod, Items.IRON_PICKAXE)) {
                 if (mod.getEntityTracker().itemDropped(Items.IRON_PICKAXE))
                     return new PickupDroppedItemTask(Items.IRON_PICKAXE, 1);
                 if (mod.getEntityTracker().itemDropped(Items.DIAMOND_PICKAXE))
@@ -1917,20 +1921,20 @@ public class BeatMinecraftTask extends Task {
         }
 
         // make new pickaxe if old one breaks
-        if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+        if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
             return TaskCatalogue.getItemTask(Items.DIAMOND_PICKAXE, 1);
-        } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+        } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
             return TaskCatalogue.getItemTask(Items.IRON_PICKAXE, 1);
-        } else if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE)) {
+        } else if (!hasEquipment(mod, Items.STONE_PICKAXE)) {
             return TaskCatalogue.getItemTask(Items.STONE_PICKAXE, 1);
         }
-        if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE)) {
+        if (!hasEquipment(mod, Items.WOODEN_PICKAXE)) {
             return TaskCatalogue.getItemTask(Items.WOODEN_PICKAXE, 1);
         }
 
         // We have eyes. Locate our portal + enter.
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
-            if (itemStorage.hasItem(Items.DIAMOND_PICKAXE)) {
+            if (hasEquipment(mod, Items.DIAMOND_PICKAXE)) {
                 Item[] throwGearItems = {Items.STONE_SWORD, Items.STONE_PICKAXE, Items.IRON_SWORD, Items.IRON_PICKAXE};
                 List<Slot> ironArmors = itemStorage.getSlotsWithItemPlayerInventory(true, COLLECT_IRON_ARMOR);
                 List<Slot> throwGears = itemStorage.getSlotsWithItemPlayerInventory(true, throwGearItems);
@@ -2568,14 +2572,14 @@ public class BeatMinecraftTask extends Task {
                 // make new pickaxe if old one breaks
                 // TODO refactor duplicated code
                 ItemStorageTracker itemStorage = mod.getItemStorage();
-                if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+                if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.DIAMOND_PICKAXE, 1);
-                } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+                } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.IRON_PICKAXE, 1);
-                } else if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE)) {
+                } else if (!hasEquipment(mod, Items.STONE_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.STONE_PICKAXE, 1);
                 }
-                if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE)) {
+                if (!hasEquipment(mod, Items.WOODEN_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.WOODEN_PICKAXE, 1);
                 }
 
@@ -2638,14 +2642,14 @@ public class BeatMinecraftTask extends Task {
 
                 // make new pickaxe if old one breaks
                 ItemStorageTracker itemStorage = mod.getItemStorage();
-                if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+                if (itemStorage.getItemCount(Items.DIAMOND) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.DIAMOND_PICKAXE, 1);
-                } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE)) {
+                } else if (itemStorage.getItemCount(Items.IRON_INGOT) >= 3 && !hasEquipment(mod, Items.IRON_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.IRON_PICKAXE, 1);
-                } else if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE)) {
+                } else if (!hasEquipment(mod, Items.STONE_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.STONE_PICKAXE, 1);
                 }
-                if (!itemStorage.hasItem(Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE)) {
+                if (!hasEquipment(mod, Items.WOODEN_PICKAXE)) {
                     return TaskCatalogue.getItemTask(Items.WOODEN_PICKAXE, 1);
                 }
 
