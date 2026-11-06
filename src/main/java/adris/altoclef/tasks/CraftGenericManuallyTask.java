@@ -144,7 +144,14 @@ public class CraftGenericManuallyTask extends Task implements adris.altoclef.tas
      * number is stable while items are mid-move and only falls when a craft actually consumes them.
      */
     private int computeRequiredPerSlot() {
-        int batch = (int) Math.ceil((double) target.getTargetCount() / target.getRecipe().outputCount());
+        var storage = AltoClef.getInstance().getItemStorage();
+        return computeRequiredPerSlot(target, storage.getItemCount(target.getOutputItem()), storage::getItemCount);
+    }
+
+    static int computeRequiredPerSlot(RecipeTarget target, int ownedOutput,
+                                      java.util.function.ToIntFunction<Item[]> available) {
+        int remaining = Math.max(0, target.getTargetCount() - ownedOutput);
+        int batch = (int) Math.ceil((double) remaining / target.getRecipe().outputCount());
         int result = Math.min(batch, 64);
         for (int i = 0; i < target.getRecipe().getSlotCount(); ++i) {
             ItemTarget want = target.getRecipe().getSlot(i);
@@ -155,7 +162,7 @@ public class CraftGenericManuallyTask extends Task implements adris.altoclef.tas
                 if (other != null && !other.isEmpty() && other.equals(want)) ++slotsWanting;
             }
             if (slotsWanting == 0) continue;
-            int supply = AltoClef.getInstance().getItemStorage().getItemCount(want.getMatches());
+            int supply = available.applyAsInt(want.getMatches());
             result = Math.min(result, Math.max(1, supply / slotsWanting));
         }
         return Math.max(1, result);

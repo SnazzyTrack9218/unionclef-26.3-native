@@ -225,7 +225,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     // nothing happens and this task used to sit at an open table doing nothing. Watch the grid: if
     // the signature has not changed shortly after the click, stop using the book for this craft and
     // let CraftGenericManuallyTask place the items by hand.
-    private static final long RECIPE_BOOK_FALLBACK_MS = 1500L;
+    private static final long RECIPE_BOOK_FALLBACK_MS = adris.altoclef.util.helpers.RecipeBookHelper.RESPONSE_TIMEOUT_MS;
     private long _recipeBookSentAt = 0L;
     private long _recipeBookSentSig = 0L;
     private boolean _recipeBookDisabled = false;
@@ -505,28 +505,22 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             if (!_recipeBookDisabled
                     && mod.getModSettings().shouldUseCraftingBookToCraft() && player != null
                     && mod.getWorld() != null && mod.getSlotHandler().canDoSlotAction()) {
-                net.minecraft.util.context.ContextMap ctx =
-                        net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(mod.getWorld());
-                net.minecraft.world.entity.player.StackedItemContents finder = new net.minecraft.world.entity.player.StackedItemContents();
-                for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                    finder.accountSimpleStack(player.getInventory().getItem(i));
+                var context = net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(mod.getWorld());
+                var contents = new net.minecraft.world.entity.player.StackedItemContents();
+                player.getInventory().fillStackedContents(contents);
+                if (player.containerMenu instanceof net.minecraft.world.inventory.AbstractCraftingMenu menu) {
+                    menu.fillCraftSlotsStackedContents(contents);
                 }
-                for (net.minecraft.client.gui.screens.recipebook.RecipeCollection col
-                        : player.getRecipeBook().getCollections()) {
-                    col.selectRecipes(finder, e -> true);
-                    for (net.minecraft.world.item.crafting.display.RecipeDisplayEntry entry : col.getRecipes()) {
-                        for (ItemStack shown : entry.resultItems(ctx)) {
-                            if (shown.getItem() == target.getOutputItem() && col.isCraftable(entry.id())) {
-                                mod.getController().handlePlaceRecipe(
-                                        player.containerMenu.containerId, entry.id(), true);
-                                mod.getSlotHandler().registerSlotAction();
-                                _recipeBookSentAt = System.currentTimeMillis();
-                                _recipeBookSentSig = craftProgressSignature(mod);
-                                return null;
-                            }
-                        }
-                    }
+                var recipe = adris.altoclef.util.helpers.RecipeBookHelper.findCraftable(
+                        player.getRecipeBook().getCollections(), target.getOutputItem(), context, contents, 3, 3);
+                if (recipe.isPresent()) {
+                    mod.getController().handlePlaceRecipe(player.containerMenu.containerId, recipe.get().id(), true);
+                    mod.getSlotHandler().registerSlotAction();
+                    _recipeBookSentAt = System.currentTimeMillis();
+                    _recipeBookSentSig = craftProgressSignature(mod);
+                    return null;
                 }
+
             }
 
             // Return a CraftGenericManuallyTask by default

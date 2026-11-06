@@ -1,5 +1,34 @@
 # Gathering and equipment fixes — 1.0.2-snazz.1+26.3
 
+## Crafting improvements in 1.0.3
+
+- Refresh the recipe cache when Minecraft replaces the recipe-book collection
+  snapshot, including recipes unlocked after joining. Clear obsolete entries on
+  rebuild and preserve every valid ingredient alternative instead of only the
+  first wood/item type. Missing ingredient displays are not treated as free slots.
+- Keep three- and four-ingredient shapeless recipes in the 2x2 inventory grid.
+- Select a craftable recipe for the requested output and current grid size without
+  recalculating the entire recipe book's UI state. Include ingredients already
+  staged in the grid when checking availability.
+- Inventory recipe-book crafting waits for its request, preserves the active grid,
+  and uses the table crafter's existing 1.5-second manual fallback if no output
+  arrives. Its manual child keeps control of its cursor and grid. An open table
+  is no longer replaced by the inventory screen.
+- Manual crafting batches use the number of outputs still needed, rather than
+  repeating the full absolute target when some are already owned.
+- Material checks inspect all nine actual table inputs even for 2x2 recipes;
+  previously that scan skipped some inputs and inspected inventory slots instead.
+
+The local installation enables recipe-book crafting to reduce individual clicks;
+manual placement remains the fallback. Existing click pacing is preserved. This
+is a configuration change outside the jar and is backed up with the installation.
+
+Validation: 39 JUnit tests passed, including real Minecraft 26.3 display parsing,
+recipe selection, recipe-book snapshot replacement, manual batch sizing and the
+previous equipment/food/pickup regressions. No live survival playthrough has been
+completed with this release, so these checks do not establish a timing improvement
+or prove that all navigation stalls are fixed.
+
 ## Gathering fixes in 1.0.2
 
 The Baritone pickup branch returned before the existing inventory, progress and
@@ -51,8 +80,7 @@ Original authorship, GPL-3.0 license, bundled components and their notices are r
 
 The fix covers vanilla wood, stone, iron, diamond and netherite tool progression
 and iron, diamond and netherite armor. It does not infer tiers for arbitrary
-modded equipment. Existing survival planning, food, combat and recipe issues
-outside equipment recognition are unchanged.
+modded equipment. These equipment rules do not add support for arbitrary modded tool tiers.
 
 ## Build and checks
 

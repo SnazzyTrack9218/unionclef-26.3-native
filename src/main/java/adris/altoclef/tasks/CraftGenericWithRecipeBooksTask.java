@@ -2,14 +2,12 @@ package adris.altoclef.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.multiversion.recipemanager.WrappedRecipeEntry;
-import adris.altoclef.tasks.slot.EnsureFreePlayerCraftingGridTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.JankCraftingRecipeMapping;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.RecipeBookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -32,6 +30,8 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
     public static volatile String cgScreen = "-";
 
     private final RecipeTarget target;
+    private long recipeSentAt;
+    private boolean useManualCrafting;
 
     public CraftGenericWithRecipeBooksTask(RecipeTarget target) {
         this.target = target;
@@ -42,7 +42,8 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
      */
     @Override
     protected void onStart() {
-
+        recipeSentAt = 0L;
+        useManualCrafting = false;
     }
 
     /**
@@ -79,6 +80,9 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
             stop();
             return null;
         }
+
+        // The manual child owns its cursor and grid for the whole placement sequence.
+        if (useManualCrafting) return new CraftGenericManuallyTask(target);
 
         // Get the item stack in the cursor slot
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
@@ -154,90 +158,52 @@ public class CraftGenericWithRecipeBooksTask extends Task implements ITaskUsesCr
             return null;
         }
 
-        // Check if neither the big crafting UI nor the player inventory UI is open
-        if (!isBigCraftingOpen) {
-            PlayerSlot[] playerInputSlots = PlayerSlot.CRAFT_INPUT_SLOTS;
-            for (PlayerSlot playerInputSlot : playerInputSlots) {
-                ItemStack playerInput = StorageHelper.getItemStackInSlot(playerInputSlot);
-                if (!playerInput.isEmpty()) {
-                    // Return a task to ensure a free player crafting grid
-                    return new EnsureFreePlayerCraftingGridTask();
-                }
+        // Let a request finish before clearing its grid or sending it again. The table
+        // crafter already uses this response budget and manual fallback.
+        if (recipeSentAt != 0L) {
+            if (System.currentTimeMillis() - recipeSentAt < RecipeBookHelper.RESPONSE_TIMEOUT_MS) {
+                setDebugState("Waiting for recipe-book output");
+                return null;
             }
+            recipeSentAt = 0L;
+            useManualCrafting = true;
+        }
+        if (useManualCrafting) {
+            setDebugState("Placing ingredients by hand");
+            return new CraftGenericManuallyTask(target);
         }
 
-        // 1.21.11 moved recipe-book crafting onto NetworkRecipeId, and the port had been left
-        // switched off. That is what blocked the playthrough's second rung: this task held the
-        // inventory screen for a whole run -- measured 9295 ticks of 9295, no table screen, no
-        // close -- because it reached here and did nothing, with wood to spare in the pack.
-        //
-        // The ids are handed out at RUNTIME by the server during its recipe sync, so the
-        // client's own book is the only place they exist; the recipe registry cannot help.
-        // Every type below came from the yarn mappings or from the compiler naming it, never
-        // from a guess: clickRecipe(int, NetworkRecipeId, boolean), RecipeDisplayEntry.id(),
-        // ClientRecipeBook.getOrderedResults(), RecipeResultCollection.getAllRecipes(),
-        // RecipeDisplayEntry.getStacks(ContextParameterMap), and the context itself from
-        // SlotDisplayContexts.createParameters(World) rather than the null the compiler would
-        // have accepted and the runtime would have thrown on.
         LocalPlayer player = Minecraft.getInstance().player;
-        // REVERTED: REFRESHING EVERY TICK IS TOO EXPENSIVE.
-        // Moving the recompute out of this gate meant walking all 109 collections and matching
-        // ingredients for each, every single tick. Measured over three runs: cgSent fell to 0
-        // and the bot stopped reaching even the WOOD rung, which it had been clearing in 21 to
-        // 214 seconds. The book being slightly stale is a smaller problem than the client not
-        // having time to chop. If staleness needs solving it wants its own rate gate -- a few
-        // times a second, not sixty -- rather than no gate at all.
-        // OPEN THE SCREEN BEFORE ASKING THE SERVER TO CRAFT.
-        // isPlayerInventoryOpen() reads the screen HANDLER, and PlayerScreenHandler is the
-        // default one -- so it answered true with nothing open, this task never opened a
-        // screen, and the server dropped every craft request. Measured: cgInv on every tick,
-        // cgNoScreen 0 always, cgOutReady 0 while the book was healthy and the packet did go.
-        if (player != null && mod.getWorld() != null
-                && !StorageHelper.isPlayerInventoryScreenOpen()) {
+        if (player == null || mod.getWorld() == null) return null;
+        if (!isBigCraftingOpen && !StorageHelper.isPlayerInventoryScreenOpen()) {
             Minecraft.getInstance().setScreenAndShow(
                     new net.minecraft.client.gui.screens.inventory.InventoryScreen(player));
             return null;
         }
-        if (player != null && mod.getWorld() != null && mod.getSlotHandler().canDoSlotAction()) {
-            net.minecraft.util.context.ContextMap ctx =
-                    net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(mod.getWorld());
-            // TELL THE BOOK WHAT WE ARE CARRYING.
-            // Measured: the book held 109 collections and NOT ONE had a craftable recipe, while
-            // the pack carried logs and planks are made from a log. Vanilla recomputes that set
-            // when a crafting screen's contents change; this bot moves items its own way, so the
-            // recompute never happened and every send was refused (cgCraftable 0, cgNotCraftable
-            // 4) -- which is why the server dropped the click and the output slot stayed empty.
-            net.minecraft.world.entity.player.StackedItemContents finder = new net.minecraft.world.entity.player.StackedItemContents();
-            for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                finder.accountSimpleStack(player.getInventory().getItem(i));
+        if (mod.getSlotHandler().canDoSlotAction()) {
+            var context = net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(mod.getWorld());
+            var contents = new net.minecraft.world.entity.player.StackedItemContents();
+            player.getInventory().fillStackedContents(contents);
+            if (player.containerMenu instanceof net.minecraft.world.inventory.AbstractCraftingMenu menu) {
+                menu.fillCraftSlotsStackedContents(contents);
             }
-            for (net.minecraft.client.gui.screens.recipebook.RecipeCollection col
-                    : player.getRecipeBook().getCollections()) {
-                col.selectRecipes(finder, e -> true);
-                if (col.hasCraftable()) cgBookCraftable++; else cgBookNone++;
-                for (net.minecraft.world.item.crafting.display.RecipeDisplayEntry entry : col.getRecipes()) {
-                    for (ItemStack shown : entry.resultItems(ctx)) {
-                        if (shown.getItem() == target.getOutputItem()) {
-                            // IS THE SERVER EVEN WILLING? A click on a recipe the player has
-                            // not unlocked is dropped silently, which looks exactly like what
-                            // was measured: the right recipe sent, cgOutReady=0. One counter
-                            // settles it before any theory about screens or arguments.
-                            if (col.isCraftable(entry.id())) cgCraftable++; else cgNotCraftable++;
-                            // WHICH SCREEN IS THIS SENT FROM? The book recompute lands and the
-                            // recipe is craftable, yet nothing reaches the output slot -- so the
-                            // fault is after the send, and the handler we hold is the first
-                            // suspect: cgBig has been 0 all session, i.e. never a crafting table.
-                            cgScreen = player.containerMenu.getClass().getSimpleName();
-                            cgSent++;   // "the hang is gone" is not "a recipe was sent"
-                            cgLastSent = String.valueOf(
-                                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(target.getOutputItem()));
-                            mod.getController().handlePlaceRecipe(
-                                    player.containerMenu.containerId, entry.id(), true);
-                            mod.getSlotHandler().registerSlotAction();
-                            return null;
-                        }
-                    }
-                }
+            var recipe = RecipeBookHelper.findCraftable(player.getRecipeBook().getCollections(),
+                    target.getOutputItem(), context, contents,
+                    isBigCraftingOpen ? 3 : 2, isBigCraftingOpen ? 3 : 2);
+            if (recipe.isPresent()) {
+                cgCraftable++;
+                cgScreen = player.containerMenu.getClass().getSimpleName();
+                cgSent++;
+                cgLastSent = String.valueOf(
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(target.getOutputItem()));
+                mod.getController().handlePlaceRecipe(
+                        player.containerMenu.containerId, recipe.get().id(), true);
+                mod.getSlotHandler().registerSlotAction();
+                recipeSentAt = System.currentTimeMillis();
+            } else {
+                cgNotCraftable++;
+                useManualCrafting = true;
+                return new CraftGenericManuallyTask(target);
             }
         }
 
